@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SlideBeam — Mando</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #07070c;
+    --surface: #0e0e16;
+    --surface2: #14141f;
+    --border: #1c1c2e;
+    --accent: #00e5a0;
+    --accent2: #00b4d8;
+    --accent-glow: rgba(0,229,160,0.15);
+    --text: #ededf5;
+    --muted: #52526e;
+    --danger: #ff4d6d;
+    --warn: #fbbf24;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ══ SCREENS ══ */
+  .screen { display: none; min-height: 100vh; }
+  .screen.active { display: flex; flex-direction: column; }
+
+  /* ══ JOIN SCREEN ══ */
+  #screen-join {
+    align-items: center; justify-content: center;
+    padding: 2rem; text-align: center; gap: 2rem;
+    background: radial-gradient(ellipse at 50% 30%, rgba(0,229,160,0.07) 0%, transparent 70%);
+  }
+
+  .join-logo {
+    font-size: 2.8rem; font-weight: 900; letter-spacing: -0.04em;
+    background: linear-gradient(135deg, #00e5a0, #00b4d8);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .join-sub { font-size: 0.95rem; color: var(--muted); max-width: 280px; line-height: 1.6; }
+
+  .join-form { display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 320px; }
+
+  .input-group { display: flex; flex-direction: column; gap: 0.4rem; }
+  .input-label { font-size: 0.8rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+  input[type="text"] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.2rem; letter-spacing: 0.1em;
+    text-align: center; text-transform: uppercase;
+    outline: none; width: 100%;
+    transition: border-color 0.2s;
+  }
+
+  input[type="text"]::placeholder { color: var(--muted); letter-spacing: 0.05em; text-transform: none; }
+  input[type="text"]:focus { border-color: var(--accent); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000; border: none; border-radius: 12px;
+    padding: 1rem; font-family: 'Outfit', sans-serif;
+    font-size: 1rem; font-weight: 700; cursor: pointer;
+    transition: all 0.2s; width: 100%;
+  }
+
+  .btn-primary:active { transform: scale(0.97); filter: brightness(0.9); }
+
+  .error-msg {
+    font-size: 0.8rem; color: var(--danger);
+    font-family: 'JetBrains Mono', monospace;
+    text-align: center; min-height: 1.2em;
+  }
+
+  /* ══ SETUP SCREEN ══ */
+  #screen-setup {
+    padding: 1.5rem; gap: 1.25rem;
+  }
+
+  .top-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 1rem; border-bottom: 1px solid var(--border);
+  }
+
+  .session-chip {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+    color: var(--accent); background: var(--accent-glow);
+    border: 1px solid rgba(0,229,160,0.2);
+    padding: 4px 10px; border-radius: 100px;
+  }
+
+  .conn-indicator {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.75rem; font-family: 'JetBrains Mono', monospace;
+  }
+
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+  .conn-dot.connected { background: var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* Upload zone */
+  #upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 16px; padding: 2.5rem 1.5rem;
+    text-align: center; cursor: pointer;
+    transition: all 0.25s;
+  }
+
+  #upload-zone.drag-over, #upload-zone:active {
+    border-color: var(--accent); background: var(--accent-glow);
+  }
+
+  .upload-icon { font-size: 2.8rem; margin-bottom: 0.75rem; }
+  .upload-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.35rem; }
+  .upload-sub { font-size: 0.82rem; color: var(--muted); }
+
+  #file-input { display: none; }
+
+  /* ══ CONTROLLER SCREEN ══ */
+  #screen-controller { padding: 1rem; gap: 1rem; }
+
+  /* Mini thumb */
+  #thumb-wrap {
+    background: #000; border-radius: 12px;
+    overflow: hidden; aspect-ratio: 16/9;
+    position: relative; flex-shrink: 0;
+  }
+
+  #thumb-canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+  .thumb-overlay {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+    padding: 0.5rem 0.75rem;
+    display: flex; align-items: flex-end; justify-content: space-between;
+  }
+
+  #page-counter {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem; color: rgba(255,255,255,0.8);
+  }
+
+  /* Nav buttons */
+  .nav-row { display: flex; gap: 0.75rem; }
+
+  .btn-nav {
+    flex: 1; padding: 1.2rem;
+    border-radius: 14px; border: none; cursor: pointer;
+    font-family: 'Outfit', sans-serif; font-size: 1rem; font-weight: 700;
+    transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+  }
+
+  .btn-nav:active { transform: scale(0.94); }
+
+  .btn-prev {
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border); flex: 0.85;
+  }
+
+  .btn-next {
+    background: var(--accent); color: #000; flex: 1.15;
+  }
+
+  /* Laser area */
+  #laser-area {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    flex: 1; position: relative;
+    display: flex; flex-direction: column;
+    overflow: hidden; min-height: 140px;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .laser-label {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 0.8rem; color: var(--muted); pointer-events: none;
+    text-align: center; line-height: 1.5;
+    font-family: 'JetBrains Mono', monospace;
+    transition: opacity 0.3s;
+  }
+
+  #laser-area.active-laser .laser-label { opacity: 0; }
+
+  .laser-cursor {
+    position: absolute;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ff2d55 0%, rgba(255,45,85,0) 100%);
+    border: 2px solid #ff2d55;
+    transform: translate(-50%, -50%);
+    display: none; pointer-events: none;
+  }
+
+  #laser-area.active-laser .laser-cursor { display: block; }
+
+  /* Tools row */
+  .tools-row {
+    display: flex; gap: 0.6rem;
+  }
+
+  .btn-tool {
+    flex: 1; padding: 0.75rem 0.5rem;
+    border-radius: 12px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text);
+    font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+    display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+  }
+
+  .btn-tool:active { transform: scale(0.95); }
+  .btn-tool .tool-icon { font-size: 1.2rem; }
+  .btn-tool.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+
+  /* Notes panel */
+  #notes-panel {
+    display: none; flex-direction: column; gap: 0.75rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 1rem;
+  }
+
+  #notes-panel.visible { display: flex; }
+
+  .notes-header {
+    font-size: 0.8rem; color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+
+  textarea {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.75rem; color: var(--text);
+    font-family: 'Outfit', sans-serif; font-size: 0.9rem;
+    resize: none; height: 100px; outline: none;
+    transition: border-color 0.2s; line-height: 1.5;
+  }
+
+  textarea:focus { border-color: var(--accent); }
+
+  .btn-save-note {
+    background: var(--accent-glow); color: var(--accent);
+    border: 1px solid rgba(0,229,160,0.3); border-radius: 8px;
+    padding: 0.5rem 1rem; font-family: 'Outfit', sans-serif;
+    font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    transition: all 0.2s; align-self: flex-end;
+  }
+
+  .btn-save-note:active { transform: scale(0.96); }
+
+  /* Page jump */
+  #page-jump-row {
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+
+  .page-dots {
+    flex: 1; display: flex; align-items: center; overflow-x: auto;
+    gap: 5px; padding: 4px 0; scrollbar-width: none;
+  }
+
+  .page-dots::-webkit-scrollbar { display: none; }
+
+  .page-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    background: var(--border); cursor: pointer; transition: all 0.2s;
+  }
+
+  .page-dot.current { background: var(--accent); transform: scale(1.5); }
+  .page-dot:hover { background: var(--muted); }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.6rem 1.2rem;
+    font-size: 0.82rem; font-family: 'JetBrains Mono', monospace;
+    opacity: 0; transition: all 0.3s; z-index: 100; white-space: nowrap;
+  }
+
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Loading */
+  #loader {
+    display: none; position: fixed; inset: 0;
+    background: rgba(7,7,12,0.85); backdrop-filter: blur(4px);
+    z-index: 200; align-items: center; justify-content: center; flex-direction: column; gap: 1rem;
+  }
+
+  #loader.active { display: flex; }
+
+  .spinner {
+    width: 36px; height: 36px; border: 3px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loader-text { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--muted); }
+
+  /* Swipe hint */
+  .swipe-hint {
+    text-align: center; font-size: 0.72rem; color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ JOIN ══ -->
+<div id="screen-join" class="screen active">
+  <div class="join-logo">SlideBeam</div>
+  <p class="join-sub">Introduce el código que aparece en la pantalla de la pizarra</p>
+
+  <div class="join-form">
+    <div class="input-group">
+      <label class="input-label">CÓDIGO DE SESIÓN</label>
+      <input type="text" id="session-input" placeholder="Ej: A3F9B2C1" maxlength="8"
+             oninput="this.value=this.value.toUpperCase()"
+             onkeydown="if(event.key==='Enter') joinSession()">
+    </div>
+    <button class="btn-primary" onclick="joinSession()">Conectar →</button>
+    <div class="error-msg" id="join-error"></div>
+  </div>
+</div>
+
+<!-- ══ SETUP ══ -->
+<div id="screen-setup" class="screen">
+  <div class="top-bar">
+    <div class="session-chip" id="session-chip">—</div>
+    <div class="conn-indicator">
+      <div class="conn-dot" id="conn-dot"></div>
+      <span id="conn-label">Esperando pizarra…</span>
+    </div>
+  </div>
+
+  <div id="upload-zone"
+       onclick="document.getElementById('file-input').click()"
+       ondragover="ev.preventDefault();this.classList.add('drag-over')"
+       ondrop="handleDrop(event)"
+       ondragleave="this.classList.remove('drag-over')">
+    <div class="upload-icon">📄</div>
+    <div class="upload-title">Sube tu PDF aquí</div>
+    <div class="upload-sub">Toca para seleccionar o arrastra el archivo</div>
+  </div>
+
+  <input type="file" id="file-input" accept=".pdf" onchange="uploadPDF(this.files[0])">
+</div>
+
+<!-- ══ CONTROLLER ══ -->
+<div id="screen-controller" class="screen">
+
+  <div class="top-bar">
+    <div class="session-chip" id="ctrl-session-chip">—</div>
+    <div class="conn-indicator">
+      <div class="conn-dot connected"></div>
+      <span id="ctrl-filename" style="font-size:0.7rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">—</span>
+    </div>
+  </div>
+
+  <!-- Thumbnail -->
+  <div id="thumb-wrap">
+    <canvas id="thumb-canvas"></canvas>
+    <div class="thumb-overlay">
+      <div id="page-counter" style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:rgba(255,255,255,0.8)">1 / 1</div>
+    </div>
+  </div>
+
+  <!-- Page dots -->
+  <div id="page-jump-row">
+    <div class="page-dots" id="page-dots"></div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="nav-row">
+    <button class="btn-nav btn-prev" onclick="changePage(-1)">← Ant.</button>
+    <button class="btn-nav btn-next" onclick="changePage(1)">Siguiente →</button>
+  </div>
+
+  <!-- Laser area -->
+  <div id="laser-area">
+    <div class="laser-label">☝️ Toca y arrastra<br>para usar el puntero láser</div>
+    <div class="laser-cursor" id="laser-cursor"></div>
+  </div>
+
+  <!-- Tools -->
+  <div class="tools-row">
+    <button class="btn-tool" id="btn-notes" onclick="toggleNotes()">
+      <span class="tool-icon">📝</span>
+      Notas
+    </button>
+    <button class="btn-tool" id="btn-dark" onclick="toggleDark()">
+      <span class="tool-icon">🌙</span>
+      Modo
+    </button>
+    <button class="btn-tool" onclick="changePDF()">
+      <span class="tool-icon">📂</span>
+      Cambiar
+    </button>
+  </div>
+
+  <!-- Notes panel -->
+  <div id="notes-panel">
+    <div class="notes-header">
+      <span>NOTAS — DIAPOSITIVA <span id="notes-page-num">1</span></span>
+      <span id="note-saved-indicator" style="color:var(--accent);opacity:0;transition:opacity 0.3s">✓ guardado</span>
+    </div>
+    <textarea id="note-text" placeholder="Escribe tus notas para esta diapositiva…"></textarea>
+    <button class="btn-save-note" onclick="saveNote()">Guardar nota</button>
+  </div>
+
+  <div class="swipe-hint">← desliza para cambiar diapositiva →</div>
+</div>
+
+<div id="toast"></div>
+<div id="loader"><div class="spinner"></div><div class="loader-text" id="loader-text">Subiendo PDF…</div></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let socket = null;
+let sessionId = null;
+let pdfDoc = null;
+let currentPage = 1;
+let totalPages = 0;
+let currentFile = null;
+let notesOpen = false;
+let isDark = true;
+
+// ── URL pre-fill ──
+window.addEventListener('load', () => {
+  const params = new URLSearchParams(window.location.search);
+  const s = params.get('session');
+  if (s) {
+    document.getElementById('session-input').value = s.toUpperCase();
+    joinSession();
+  }
+});
+
+// ── Join ──
+function joinSession() {
+  const val = document.getElementById('session-input').value.trim().toUpperCase();
+  if (val.length < 4) { setError('Introduce el código completo'); return; }
+  sessionId = val;
+
+  socket = io();
+
+  socket.on('connect', () => {
+    socket.emit('join-remote', { sessionId });
+  });
+
+  socket.on('joined', ({ role }) => {
+    showScreen('setup');
+    document.getElementById('session-chip').textContent = sessionId;
+    document.getElementById('ctrl-session-chip').textContent = sessionId;
+    setError('');
+  });
+
+  socket.on('error', (msg) => {
+    setError(msg);
+    socket.disconnect();
+  });
+
+  socket.on('display-connected', () => {
+    document.getElementById('conn-dot').classList.add('connected');
+    document.getElementById('conn-label').textContent = 'Pizarra conectada';
+    toast('🖥️ Pizarra conectada');
+  });
+
+  socket.on('page-info', ({ totalPages: tp, currentPage: cp }) => {
+    totalPages = tp; currentPage = cp;
+    updatePageUI();
+  });
+
+  socket.on('page-changed', ({ page }) => {
+    currentPage = page;
+    renderThumb(page);
+    updatePageUI();
+    if (notesOpen) loadNote(page);
+  });
+
+  socket.on('note-data', ({ page, text }) => {
+    if (page === currentPage) {
+      document.getElementById('note-text').value = text;
+    }
+  });
+
+  socket.on('dark-updated', ({ dark }) => {
+    isDark = dark;
+    updateDarkBtn();
+  });
+
+  socket.on('display-disconnected', () => toast('⚠️ Pizarra desconectada'));
+}
+
+function setError(msg) { document.getElementById('join-error').textContent = msg; }
+
+// ── Upload PDF ──
+async function uploadPDF(file) {
+  if (!file || file.type !== 'application/pdf') return;
+  currentFile = file;
+
+  showLoader('Procesando PDF…');
+
+  // Load locally for thumbnail
+  const buf = await file.arrayBuffer();
+  pdfDoc = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+  totalPages = pdfDoc.numPages;
+  currentPage = 1;
+
+  hideLoader();
+  showLoader('Subiendo a la pizarra…');
+
+  // Upload to server
+  const formData = new FormData();
+  formData.append('pdf', file);
+
+  const res = await fetch(`/api/upload/${sessionId}`, { method: 'POST', body: formData });
+  const data = await res.json();
+
+  hideLoader();
+
+  if (data.ok) {
+    document.getElementById('ctrl-filename').textContent = file.name;
+    showScreen('controller');
+    renderThumb(1);
+    buildPageDots();
+    toast('✅ PDF enviado a la pizarra');
+  } else {
+    toast('❌ Error al subir el PDF');
+  }
+}
+
+// ── Render thumbnail ──
+async function renderThumb(num) {
+  if (!pdfDoc || num < 1 || num > totalPages) return;
+
+  const page = await pdfDoc.getPage(num);
+  const canvas = document.getElementById('thumb-canvas');
+  const wrap = document.getElementById('thumb-wrap');
+
+  const scale = wrap.offsetWidth / page.getViewport({ scale: 1 }).width;
+  const vp = page.getViewport({ scale });
+
+  canvas.width = vp.width;
+  canvas.height = vp.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+}
+
+// ── Navigation ──
+function changePage(delta) {
+  const next = currentPage + delta;
+  if (!socket || next < 1 || next > totalPages) return;
+  socket.emit('change-slide', { delta });
+  currentPage = next;
+  renderThumb(next);
+  updatePageUI();
+  if (notesOpen) loadNote(next);
+  if (navigator.vibrate) navigator.vibrate(25);
+}
+
+// ── Page dots ──
+function buildPageDots() {
+  const container = document.getElementById('page-dots');
+  container.innerHTML = '';
+  for (let i = 1; i <= totalPages; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'page-dot' + (i === currentPage ? ' current' : '');
+    dot.dataset.page = i;
+    dot.onclick = () => {
+      socket.emit('go-to-page', { page: i });
+      currentPage = i;
+      renderThumb(i);
+      updatePageUI();
+    };
+    container.appendChild(dot);
+  }
+}
+
+function updatePageUI() {
+  document.getElementById('page-counter').textContent = `${currentPage} / ${totalPages}`;
+  document.getElementById('notes-page-num').textContent = currentPage;
+  // Update dots
+  document.querySelectorAll('.page-dot').forEach((d, i) => {
+    d.classList.toggle('current', i + 1 === currentPage);
+  });
+  // Scroll dot into view
+  const dot = document.querySelector(`.page-dot[data-page="${currentPage}"]`);
+  if (dot) dot.scrollIntoView({ inline: 'center', behavior: 'smooth' });
+}
+
+// ── Laser pointer ──
+const laserArea = document.getElementById('laser-area');
+const laserCursor = document.getElementById('laser-cursor');
+
+function getLaserPos(e) {
+  const rect = laserArea.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return {
+    x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
+  };
+}
+
+laserArea.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  laserArea.classList.add('active-laser');
+  const pos = getLaserPos(e);
+  laserCursor.style.left = (pos.x * 100) + '%';
+  laserCursor.style.top = (pos.y * 100) + '%';
+  if (socket) socket.emit('laser-move', pos);
+}, { passive: false });
+
+laserArea.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const pos = getLaserPos(e);
+  laserCursor.style.left = (pos.x * 100) + '%';
+  laserCursor.style.top = (pos.y * 100) + '%';
+  if (socket) socket.emit('laser-move', pos);
+}, { passive: false });
+
+laserArea.addEventListener('touchend', (e) => {
+  laserArea.classList.remove('active-laser');
+  if (socket) socket.emit('laser-off');
+});
+
+laserArea.addEventListener('mousemove', (e) => {
+  laserArea.classList.add('active-laser');
+  const pos = getLaserPos(e);
+  laserCursor.style.left = (pos.x * 100) + '%';
+  laserCursor.style.top = (pos.y * 100) + '%';
+  if (socket) socket.emit('laser-move', pos);
+});
+
+laserArea.addEventListener('mouseleave', () => {
+  laserArea.classList.remove('active-laser');
+  if (socket) socket.emit('laser-off');
+});
+
+// ── Notes ──
+function toggleNotes() {
+  notesOpen = !notesOpen;
+  document.getElementById('notes-panel').classList.toggle('visible', notesOpen);
+  document.getElementById('btn-notes').classList.toggle('active', notesOpen);
+  if (notesOpen) loadNote(currentPage);
+}
+
+function loadNote(page) {
+  if (socket) socket.emit('get-note', { page });
+}
+
+function saveNote() {
+  const text = document.getElementById('note-text').value;
+  if (socket) socket.emit('save-note', { page: currentPage, text });
+  const ind = document.getElementById('note-saved-indicator');
+  ind.style.opacity = '1';
+  setTimeout(() => { ind.style.opacity = '0'; }, 2000);
+}
+
+// ── Dark mode ──
+function toggleDark() {
+  if (socket) socket.emit('toggle-dark');
+}
+
+function updateDarkBtn() {
+  const btn = document.getElementById('btn-dark');
+  btn.querySelector('.tool-icon').textContent = isDark ? '🌙' : '☀️';
+  btn.querySelector('span:last-child') && (btn.lastChild.textContent = isDark ? 'Modo' : 'Modo');
+}
+
+// ── Change PDF ──
+function changePDF() {
+  document.getElementById('file-input').click();
+}
+
+// ── Drag & Drop ──
+function handleDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) uploadPDF(file);
+}
+
+// ── Swipe gestures ──
+let touchX = 0;
+document.addEventListener('touchstart', (e) => { touchX = e.touches[0].clientX; }, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (document.getElementById('screen-controller').classList.contains('active')) {
+    // Don't interfere with laser area
+    if (e.target.closest('#laser-area')) return;
+    const dx = touchX - e.changedTouches[0].clientX;
+    if (Math.abs(dx) > 55) changePage(dx > 0 ? 1 : -1);
+  }
+});
+
+// ── Helpers ──
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+function showLoader(msg) {
+  document.getElementById('loader-text').textContent = msg;
+  document.getElementById('loader').classList.add('active');
+}
+
+function hideLoader() {
+  document.getElementById('loader').classList.remove('active');
+}
+</script>
+</body>
+</html>
